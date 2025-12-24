@@ -87,6 +87,11 @@
             width: 100%;
             height: 100%;
         }
+
+        .loading-note {
+            font-size: 14px;
+            color: #555;
+        }
     </style>
 </head>
 
@@ -132,32 +137,74 @@
     <!-- Leaflet.js -->
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
-        const map = L.map('map').setView([-1.286389, 36.817223], 15); // Centered on Nairobi CBD
+        const map = L.map('map').setView([-1.286389, 36.817223], 17); // Centered on Nairobi CBD
 
         // Add OpenStreetMap tiles
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Define major roads in Nairobi CBD (approximated as polylines)
-        const roads = {
-            kenyatta: [
-                [-1.2867, 36.8175], // Start of Kenyatta Ave
-                [-1.2873, 36.8226]  // End of Kenyatta Ave
-            ],
-            moi: [
-                [-1.2835, 36.8184], // Start of Moi Ave
-                [-1.2879, 36.8240]  // End of Moi Ave
-            ],
-            university: [
-                [-1.2819, 36.8180], // Start of University Way
-                [-1.2867, 36.8197]  // End of University Way
-            ]
+        // --- REAL‑WORLD ROAD GEOMETRY USING OSRM ROUTING SERVICE ---
+        // We only store *endpoints* for each Nairobi CBD road.
+        // An external routing engine (OSRM) returns the exact path that follows buildings and corners.
+        const roadEndpoints = {
+            kenyatta: {
+                // Kenyatta Avenue: Uhuru Hwy junction -> Moi Avenue junction
+                start: [-1.287000, 36.812900],
+                end:   [-1.287300, 36.822500]
+            },
+            moi: {
+                // Moi Avenue: near Tom Mboya St -> Haile Selassie
+                start: [-1.282800, 36.821100],
+                end:   [-1.289000, 36.821000]
+            },
+            university: {
+                // University Way: Museum Hill side -> Uhuru Hwy side
+                start: [-1.282000, 36.814000],
+                end:   [-1.287200, 36.819400]
+            }
         };
 
-        // Add polylines for the roads
-        Object.keys(roads).forEach((road) => {
-            L.polyline(roads[road], { color: 'blue', weight: 5 }).addTo(map);
+        // Routes resolved from OSRM (arrays of [lat, lng] that really follow the road)
+        const roads = {};
+
+        // Fetch a driving route polyline for each road from the free OSRM server.
+        // This uses real OpenStreetMap data for Nairobi, so the lines do NOT cut across buildings.
+        function loadRoadRoute(roadKey) {
+            const { start, end } = roadEndpoints[roadKey];
+            const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
+
+            fetch(url)
+                .then(res => res.json())
+                .then(json => {
+                    if (!json.routes || !json.routes[0]) return;
+                    const coords = json.routes[0].geometry.coordinates; // [lon, lat]
+                    const latLngs = coords.map(([lon, lat]) => [lat, lon]);
+                    roads[roadKey] = latLngs;
+                    L.polyline(latLngs, { color: 'blue', weight: 5 }).addTo(map);
+                })
+                .catch(err => {
+                    console.error('Failed to load route for', roadKey, err);
+                });
+        }
+
+        Object.keys(roadEndpoints).forEach(loadRoadRoute);
+
+        // Mark key traffic-light-controlled junctions entering and leaving the CBD
+        const trafficLightIntersections = [
+            { coords: [-1.2870, 36.8129], label: 'Kenyatta Ave / Uhuru Hwy (CBD entry)' },
+            { coords: [-1.2870, 36.8228], label: 'Kenyatta Ave / Moi Ave (CBD core)' },
+            { coords: [-1.2888, 36.8210], label: 'Moi Ave / Haile Selassie (CBD exit)' },
+            { coords: [-1.2820, 36.8140], label: 'University Way / Uhuru Hwy (CBD entry)' }
+        ];
+
+        trafficLightIntersections.forEach(tl => {
+            L.circleMarker(tl.coords, {
+                radius: 6,
+                color: '#ff0000',
+                fillColor: '#ffff00',
+                fillOpacity: 0.9
+            }).addTo(map).bindPopup(tl.label);
         });
 
         let cars = [];
@@ -167,6 +214,11 @@
             const selectedRoad = document.getElementById('roadSelect').value;
             const numCars = parseInt(document.getElementById('carCount').value);
             const roadPoints = roads[selectedRoad];
+
+            if (!roadPoints) {
+                alert('Still loading the real Nairobi road path for this road. Please wait a moment and try again.');
+                return;
+            }
 
             for (let i = 0; i < numCars; i++) {
                 const carMarker = L.circleMarker(roadPoints[0], { radius: 5, color: randomColor() }).addTo(map);
@@ -195,10 +247,20 @@
 
         function animateCars() {
             cars.forEach((car) => {
-                const [start, end] = car.route;
+                const route = car.route;
+                const numSegments = route.length - 1;
+                if (numSegments <= 0) return;
+
                 if (car.position < 1) {
-                    const lat = start[0] + car.position * (end[0] - start[0]);
-                    const lon = start[1] + car.position * (end[1] - start[1]);
+                    const totalProgress = car.position * numSegments;
+                    const segIndex = Math.min(Math.floor(totalProgress), numSegments - 1);
+                    const localT = totalProgress - segIndex;
+
+                    const start = route[segIndex];
+                    const end = route[segIndex + 1];
+
+                    const lat = start[0] + localT * (end[0] - start[0]);
+                    const lon = start[1] + localT * (end[1] - start[1]);
 
                     car.marker.setLatLng([lat, lon]);
                     car.position += car.speed;

@@ -9,13 +9,26 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 </head>
 <body style="background: url('t1.jpg') no-repeat center center/cover;">
+    <!-- Global navigation -->
+    <nav class="top-nav">
+        <div class="brand">
+            <span class="brand-title">Nairobi TLCS</span>
+            <span class="brand-subtitle">Traffic Lights Control System</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="index.html" class="active"><i class="fas fa-home"></i> Home</a></li>
+            <li><a href="numericdata.html"><i class="fas fa-chart-line"></i> Numeric Data &amp; Map</a></li>
+            <li><a href="controlpanel.html"><i class="fas fa-sliders-h"></i> Simulation Control</a></li>
+            <li><a href="trafficstatus.html"><i class="fas fa-traffic-light"></i> Admin Dashboard</a></li>
+        </ul>
+    </nav>
+
     <div class="dropdown">
-        <button class="dropdown-btn" onclick="toggleDropdown()">TRAFFIC <span class="arrow">&#9660;</span></button>
+        <button class="dropdown-btn" onclick="toggleDropdown()">Quick Actions <span class="arrow">&#9660;</span></button>
         <div class="dropdown-content" id="dropdownContent">
-            
-            <button class="button" onclick="window.location.href = 'trafficstatus.html'">Status!</button>
-            <button class="button" onclick="window.location.href = 'numericdata.html'">Navigation</button>
-            <button class="button"  onclick="window.location.href = 'controlpanel.html'">Control Panel</button>
+            <button class="button" onclick="window.location.href = 'trafficstatus.html'">View Status</button>
+            <button class="button" onclick="window.location.href = 'numericdata.html'">Open Map &amp; Data</button>
+            <button class="button"  onclick="window.location.href = 'controlpanel.html'">Open Control Panel</button>
         </div>
     </div>
     <h1 id="traffic-lights">Traffic Lights Control System</h1>

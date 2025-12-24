@@ -22,16 +22,18 @@
 
         .container {
             display: flex;
+            min-height: calc(100vh - 80px);
         }
 
         /* Sidebar navigation */
         .drawer {
             width: 250px;
             background-color: #343a40;
-            height: 100vh;
-            position: fixed;
+            height: 100%;
             padding: 20px;
             box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+            position: sticky;
+            top: 0;
         }
 
         .drawer a {
@@ -52,7 +54,7 @@
         .main-content {
             margin-left: 270px;
             padding: 20px;
-            width: 100%;
+            width: calc(100% - 270px);
         }
 
         .status,
@@ -72,7 +74,7 @@
         /* Traffic Visualization */
         #map {
             width: 100%;
-            height: 400px;
+            height: 420px;
             border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
@@ -100,6 +102,30 @@
             position: relative;
             bottom: 0;
             width: 100%;
+        }
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .drawer {
+                width: 100%;
+                height: auto;
+                position: relative;
+                box-shadow: none;
+                display: flex;
+                gap: 16px;
+                align-items: center;
+            }
+
+            .drawer a {
+                margin-bottom: 0;
+            }
+
+            .main-content {
+                margin-left: 0;
+                width: 100%;
+            }
         }
     </style>
 
@@ -142,32 +168,55 @@
         <h1>Enhanced Traffic Control - Nairobi CBD</h1>
     </header>
 
-    <!-- Sidebar Navigation -->
-    <div class="drawer">
-        <h2>Admin Panel</h2>
-        <a href="#" onclick="fetchTrafficData()">Fetch Traffic Data</a>
-        <a href="#" onclick="showMap()">Show Map</a>
-        <a href="#" onclick="controlLights()">Control Traffic Lights</a>
-    </div>
-
-    <!-- Main content area -->
-    <div class="main-content">
-        <!-- Traffic Status -->
-        <div class="status">
-            <h2>Current Traffic Status</h2>
-            <div id="trafficChart" style="height: 300px;"></div>
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <div class="drawer">
+            <div>
+                <h2>Admin Panel</h2>
+                <small>Simulated backend: Nairobi CBD intersections</small>
+            </div>
+            <a href="#" onclick="fetchTrafficData(); return false;">Fetch Traffic Data</a>
+            <a href="#" onclick="showMap(); return false;">Show Map</a>
+            <a href="#" onclick="toggleTraffic(); return false;">Toggle Traffic Lights</a>
         </div>
 
-        <!-- Admin Traffic Controls -->
-        <div class="traffic-controls">
-            <h2>Admin Controls</h2>
-            <button class="button" onclick="addCars()">Add Cars</button>
-            <button class="button" onclick="removeCars()">Remove Cars</button>
-            <button class="button" onclick="toggleTraffic()">Toggle Traffic Lights</button>
-        </div>
+        <!-- Main content area -->
+        <div class="main-content">
+            <!-- Traffic Status -->
+            <div class="status">
+                <h2>Current Traffic Status</h2>
+                <div id="trafficChart" style="height: 300px;"></div>
+            </div>
 
-        <!-- Traffic Map -->
-        <div id="map"></div>
+            <!-- Admin Traffic Controls -->
+            <div class="traffic-controls">
+                <h2>Intersection Controls (Simulated)</h2>
+                <p id="activeIntersectionLabel">Active intersection: Kenyatta Ave & Moi Ave</p>
+                <div style="margin-bottom: 10px;">
+                    <label for="intersectionSelect"><strong>Select intersection:</strong></label>
+                    <select id="intersectionSelect">
+                        <option value="kenyatta_moi">Kenyatta Ave & Moi Ave</option>
+                        <option value="kenyatta_uhuru">Kenyatta Ave & Uhuru Hwy</option>
+                        <option value="haile_moi">Haile Selassie & Moi Ave</option>
+                        <option value="university_uhuru">University Way & Uhuru Hwy</option>
+                    </select>
+                </div>
+
+                <button class="button" onclick="setMode('auto')">Set Mode: Automatic</button>
+                <button class="button" onclick="setMode('manual')">Set Mode: Manual</button>
+
+                <div style="margin-top: 12px;">
+                    <button class="button" onclick="setPhase('NS_GREEN')">NS Green / EW Red</button>
+                    <button class="button" onclick="setPhase('EW_GREEN')">EW Green / NS Red</button>
+                </div>
+
+                <p id="modeLabel" style="margin-top: 12px;">Mode: Automatic (simulated)</p>
+                <p id="phaseLabel">Current phase: NS Green / EW Red</p>
+            </div>
+
+            <!-- Traffic Map -->
+            <div id="map"></div>
+        </div>
     </div>
 
     <footer>
@@ -175,29 +224,108 @@
     </footer>
 
     <script>
-        // Function to toggle the traffic lights
+        // --- Simulated backend data model for intersections ---
+        const intersections = {
+            kenyatta_moi: {
+                name: "Kenyatta Ave & Moi Ave",
+                center: { lat: -1.2865, lng: 36.8198 },
+                traffic: { northbound: 60, southbound: 45, eastbound: 80, westbound: 50 }
+            },
+            kenyatta_uhuru: {
+                name: "Kenyatta Ave & Uhuru Hwy",
+                center: { lat: -1.2884, lng: 36.8152 },
+                traffic: { northbound: 70, southbound: 90, eastbound: 40, westbound: 30 }
+            },
+            haile_moi: {
+                name: "Haile Selassie & Moi Ave",
+                center: { lat: -1.2893, lng: 36.8226 },
+                traffic: { northbound: 55, southbound: 60, eastbound: 65, westbound: 42 }
+            },
+            university_uhuru: {
+                name: "University Way & Uhuru Hwy",
+                center: { lat: -1.2814, lng: 36.8165 },
+                traffic: { northbound: 35, southbound: 50, eastbound: 25, westbound: 20 }
+            }
+        };
+
+        let currentMode = 'auto';
+        let currentPhase = 'NS_GREEN';
+        let currentIntersectionKey = 'kenyatta_moi';
+        let mapInstance;
+        let intersectionMarker;
+
+        function setMode(mode) {
+            currentMode = mode;
+            const modeLabel = document.getElementById('modeLabel');
+            modeLabel.textContent = mode === 'auto'
+                ? 'Mode: Automatic (simulated)'
+                : 'Mode: Manual (simulated)';
+        }
+
+        function setPhase(phase) {
+            currentPhase = phase;
+            const phaseLabel = document.getElementById('phaseLabel');
+            phaseLabel.textContent = phase === 'NS_GREEN'
+                ? 'Current phase: NS Green / EW Red'
+                : 'Current phase: EW Green / NS Red';
+        }
+
         function toggleTraffic() {
-            alert("Traffic lights toggled!");
+            // Simple toggle between phases
+            setPhase(currentPhase === 'NS_GREEN' ? 'EW_GREEN' : 'NS_GREEN');
+            alert("Traffic phase switched to: " + currentPhase.replace('_', ' '));
         }
 
-        // Fetch and update simulated traffic data
         function fetchTrafficData() {
-            alert("Traffic data fetched!");
+            // This mimics an API call to a Kotlin/Node backend that returns volumes per road
+            const active = intersections[currentIntersectionKey];
+            // You can extend this to update charts based on selected intersection
+            alert(`Simulated data fetched for ${active.name} (Nairobi CBD). Integrate real API here.`);
         }
 
-        // Show map with Nairobi CBD marker
-        function showMap() {
-            const nairobiCBD = { lat: -1.286389, lng: 36.817223 }; // Nairobi CBD coordinates
-            const map = new google.maps.Map(document.getElementById("map"), {
-                zoom: 14,
-                center: nairobiCBD,
+        function initMap() {
+            const active = intersections[currentIntersectionKey];
+            mapInstance = new google.maps.Map(document.getElementById("map"), {
+                zoom: 17,
+                center: active.center,
+                mapTypeId: "hybrid",
+                tilt: 45,
             });
-            const marker = new google.maps.Marker({
-                position: nairobiCBD,
-                map: map,
-                title: "Nairobi CBD",
+
+            intersectionMarker = new google.maps.Marker({
+                position: active.center,
+                map: mapInstance,
+                title: active.name,
             });
+
+            // Slight 3D-style bearing
+            mapInstance.setHeading(35);
         }
+
+        function showMap() {
+            if (!mapInstance) {
+                initMap();
+            } else {
+                const active = intersections[currentIntersectionKey];
+                mapInstance.setCenter(active.center);
+                intersectionMarker.setPosition(active.center);
+            }
+        }
+
+        // Handle intersection change
+        document.addEventListener('DOMContentLoaded', () => {
+            const select = document.getElementById('intersectionSelect');
+            const label = document.getElementById('activeIntersectionLabel');
+            select.addEventListener('change', () => {
+                currentIntersectionKey = select.value;
+                const active = intersections[currentIntersectionKey];
+                label.textContent = `Active intersection: ${active.name}`;
+                if (mapInstance && intersectionMarker) {
+                    mapInstance.setCenter(active.center);
+                    intersectionMarker.setPosition(active.center);
+                }
+            });
+        });
     </script>
 
 </body>
